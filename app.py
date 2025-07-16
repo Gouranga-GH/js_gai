@@ -1,21 +1,21 @@
 import streamlit as st
-from langchain_groq import ChatGroq
-from langchain_community.utilities import SerpAPIWrapper
-from langchain.agents import initialize_agent, AgentType
-from langchain.callbacks import StreamlitCallbackHandler
+# Import Streamlit for web app UI
+from langchain_groq import ChatGroq  # Import Groq LLM integration for AI formatting
+from langchain_community.utilities import SerpAPIWrapper  # Import SerpAPI for job search
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # For loading environment variables from .env
 import json
-from datetime import datetime
+from datetime import datetime  # For timestamping search history
 import time
 import random
 
-# Load environment variables
+# Load environment variables from .env file (if present)
 load_dotenv()
 
-# Custom CSS for artistic design
+# --- UI: Custom CSS for design ---
 st.markdown("""
 <style>
+    /* Main header styling */
     .main-header {
         background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #2980b9 100%);
         padding: 3rem;
@@ -26,8 +26,8 @@ st.markdown("""
         position: relative;
         overflow: hidden;
     }
-    
     .main-header::before {
+        /* SVG grain overlay for texture */
         content: '';
         position: absolute;
         top: 0;
@@ -37,7 +37,6 @@ st.markdown("""
         background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
         pointer-events: none;
     }
-    
     .main-header h1 {
         color: white;
         font-size: 3.5rem;
@@ -47,7 +46,6 @@ st.markdown("""
         position: relative;
         z-index: 1;
     }
-    
     .main-header p {
         color: rgba(255,255,255,0.95);
         font-size: 1.3rem;
@@ -55,14 +53,13 @@ st.markdown("""
         position: relative;
         z-index: 1;
     }
-    
+    /* Stats cards styling */
     .stats-container {
         display: flex;
         justify-content: space-around;
         margin: 2rem 0;
         flex-wrap: wrap;
     }
-    
     .stat-card {
         background: linear-gradient(135deg, #1e3c72 0%, #2980b9 100%);
         padding: 1.5rem;
@@ -74,22 +71,19 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(0,0,0,0.1);
         transition: transform 0.3s ease;
     }
-    
     .stat-card:hover {
         transform: translateY(-5px);
     }
-    
     .stat-number {
         font-size: 2rem;
         font-weight: bold;
         margin-bottom: 0.5rem;
     }
-    
     .stat-label {
         font-size: 0.9rem;
         opacity: 0.9;
     }
-    
+    /* Sidebar header styling */
     .sidebar-header {
         background: linear-gradient(135deg, #1e3c72 0%, #2980b9 100%);
         padding: 1.5rem;
@@ -98,13 +92,12 @@ st.markdown("""
         text-align: center;
         box-shadow: 0 8px 25px rgba(0,0,0,0.1);
     }
-    
     .sidebar-header h3 {
         color: white;
         margin: 0;
         font-size: 1.5rem;
     }
-    
+    /* Job card styling */
     .job-card {
         background: linear-gradient(135deg, #e3f0ff 0%, #b3c6e6 100%);
         padding: 2rem;
@@ -114,37 +107,31 @@ st.markdown("""
         border-left: 5px solid #2980b9;
         transition: all 0.3s ease;
     }
-    
     .job-card:hover {
         transform: translateY(-3px);
         box-shadow: 0 15px 40px rgba(0,0,0,0.15);
     }
-    
     .job-title {
         font-size: 1.5rem;
         font-weight: bold;
         color: #1e3c72;
         margin-bottom: 0.5rem;
     }
-    
     .job-company {
         font-size: 1.1rem;
         color: #2980b9;
         margin-bottom: 0.5rem;
     }
-    
     .job-location {
         font-size: 1rem;
         color: #7f8c8d;
         margin-bottom: 1rem;
     }
-    
     .job-description {
         color: #34495e;
         line-height: 1.6;
         margin-bottom: 1rem;
     }
-    
     .job-meta {
         display: flex;
         justify-content: space-between;
@@ -153,7 +140,6 @@ st.markdown("""
         padding-top: 1rem;
         border-top: 1px solid #ecf0f1;
     }
-    
     .job-type {
         background: linear-gradient(135deg, #1e3c72 0%, #2980b9 100%);
         color: white;
@@ -162,13 +148,12 @@ st.markdown("""
         font-size: 0.9rem;
         font-weight: bold;
     }
-    
     .job-salary {
         color: #2980b9;
         font-weight: bold;
         font-size: 1.1rem;
     }
-    
+    /* Search container styling */
     .search-container {
         background: linear-gradient(135deg, #e3f0ff 0%, #b3c6e6 100%);
         padding: 2rem;
@@ -177,7 +162,6 @@ st.markdown("""
         text-align: center;
         box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     }
-    
     .search-input {
         background: white;
         border: 2px solid #2980b9;
@@ -188,7 +172,6 @@ st.markdown("""
         max-width: 500px;
         margin: 1rem 0;
     }
-    
     .search-button {
         background: linear-gradient(135deg, #1e3c72 0%, #2980b9 100%);
         color: white;
@@ -201,12 +184,11 @@ st.markdown("""
         transition: all 0.3s ease;
         box-shadow: 0 8px 25px rgba(0,0,0,0.2);
     }
-    
     .search-button:hover {
         transform: translateY(-2px);
         box-shadow: 0 12px 35px rgba(0,0,0,0.3);
     }
-    
+    /* Filter container styling */
     .filter-container {
         background: white;
         padding: 1.5rem;
@@ -214,14 +196,13 @@ st.markdown("""
         margin: 1rem 0;
         box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
-    
     .filter-title {
         font-size: 1.2rem;
         font-weight: bold;
         color: #1e3c72;
         margin-bottom: 1rem;
     }
-    
+    /* Success and error messages */
     .success-message {
         background: linear-gradient(135deg, #e3f0ff 0%, #b3c6e6 100%);
         padding: 1rem;
@@ -231,7 +212,6 @@ st.markdown("""
         color: #1e3c72;
         font-weight: bold;
     }
-    
     .error-message {
         background: linear-gradient(135deg, #b3c6e6 0%, #1e3c72 100%);
         padding: 1rem;
@@ -244,8 +224,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Custom Job Search function using SerpAPI
+# --- Job Search Function ---
 def search_jobs_serpapi(query, serpapi_key, max_results=5):
+    """
+    Search for jobs using SerpAPI.
+    Args:
+        query (str): The job search query string.
+        serpapi_key (str): The SerpAPI API key.
+        max_results (int): Maximum number of job results to return.
+    Returns:
+        str: Formatted job search results or error message.
+    """
     try:
         serpapi = SerpAPIWrapper(serpapi_api_key=serpapi_key)
         results = serpapi.run(query)
@@ -268,7 +257,7 @@ def search_jobs_serpapi(query, serpapi_key, max_results=5):
     except Exception as e:
         return f"SerpAPI error: {str(e)}"
 
-# Main header with artistic design
+# --- UI: Main header ---
 st.markdown("""
 <div class="main-header">
     <h1>🚀 Career Compass AI 🚀</h1>
@@ -276,7 +265,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Statistics section
+# --- UI: Statistics section ---
 st.markdown("""
 <div class="stats-container">
     <div class="stat-card">
@@ -298,7 +287,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Creative description
+# --- UI: App description ---
 st.markdown("""
 <div style="text-align: center; margin: 2rem 0;">
     <p style="font-size: 1.2rem; color: #666; font-style: italic; line-height: 1.6;">
@@ -309,7 +298,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar with artistic design
+# --- UI: Sidebar with artistic design and controls ---
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-header">
@@ -317,11 +306,13 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
+    # Input for Groq API Key (for LLM formatting)
     api_key = st.text_input(
         "🔑 Enter your Groq API Key:",
         type="password",
         help="Your AI assistant key for intelligent job matching"
     )
+    # Input for SerpAPI Key (for job search)
     serpapi_key = st.text_input(
         "🔑 Enter your SerpAPI Key:",
         type="password",
@@ -330,6 +321,7 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Sidebar: Search features
     st.markdown("""
     <div style="text-align: center; padding: 1rem;">
         <h4>🎯 Search Features</h4>
@@ -344,6 +336,7 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Sidebar: Pro tips
     st.markdown("""
     <div style="text-align: center; padding: 1rem;">
         <h4>💡 Pro Tips</h4>
@@ -355,7 +348,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-# Search interface
+# --- UI: Search interface ---
 st.markdown("""
 <div class="search-container">
     <h2 style="color: #2c3e50; margin-bottom: 1rem;">🔍 Find Your Dream Job</h2>
@@ -365,18 +358,18 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Initialize session state
+# --- Session state: Initialize job search history ---
 if "job_search_history" not in st.session_state:
     st.session_state["job_search_history"] = []
 
-# Job search input
+# --- UI: Job search input ---
 job_query = st.text_input(
     "🎯 What job are you looking for?",
     placeholder="e.g., Software Engineer in New Delhi with Python experience",
     help="Be specific about role, location, skills, and salary expectations"
 )
 
-# Search filters
+# --- UI: Advanced search filters ---
 with st.expander("🔧 Advanced Search Filters", expanded=False):
     col1, col2 = st.columns(2)
     
@@ -390,11 +383,12 @@ with st.expander("🔧 Advanced Search Filters", expanded=False):
         industry = st.text_input("🏢 Industry", placeholder="e.g., Technology, Healthcare")
         remote_option = st.selectbox("🏠 Remote Work", ["Any", "Remote", "Hybrid", "On-site"])
 
-# Search button
+# --- UI: Search button and job search logic ---
 if st.button("🚀 Search Jobs", type="primary"):
+    # Ensure all required fields are filled
     if api_key and serpapi_key and job_query:
         try:
-            # Build comprehensive search query
+            # Build comprehensive search query from user input and filters
             search_query = job_query
             if location:
                 search_query += f" in {location}"
@@ -408,7 +402,7 @@ if st.button("🚀 Search Jobs", type="primary"):
                 search_query += f" {remote_option}"
             search_query += f" salary ${salary_min}+"
 
-            # Show search status
+            # Show search status spinner
             with st.status("🔍 Searching for your dream job...", expanded=True) as status:
                 # Use SerpAPI for job search
                 response = search_jobs_serpapi(search_query, serpapi_key)
@@ -416,10 +410,10 @@ if st.button("🚀 Search Jobs", type="primary"):
                     st.error(response)
                     status.update(label="❌ Search failed", state="error")
                     st.stop()
-                # Format the job search results with AI
+                # Format the job search results with AI (Groq LLM)
                 llm = ChatGroq(
-                    groq_api_key=api_key,
-                    model_name="Llama3-8b-8192",
+                    groq_api_key=api_key,  # Linter: This should be 'api_key' (per Groq's API)
+                    model_name="Llama3-8b-8192",  # Linter: This should be 'model' (per Groq's API)
                     streaming=True
                 )
                 formatted_response = llm.invoke(
@@ -430,7 +424,7 @@ if st.button("🚀 Search Jobs", type="primary"):
                 response = formatted_response
                 status.update(label="✅ Jobs found!", state="complete")
 
-            # Add to search history
+            # Add search to session history
             st.session_state.job_search_history.append({
                 'query': search_query,
                 'response': response,
@@ -461,7 +455,7 @@ if st.button("🚀 Search Jobs", type="primary"):
     else:
         st.warning("🔑 Please provide your Groq API key, SerpAPI key, and a job search query!")
 
-# Search history
+# --- UI: Search history display ---
 if st.session_state.job_search_history:
     st.markdown("---")
     st.markdown("""
@@ -474,7 +468,7 @@ if st.session_state.job_search_history:
         with st.expander(f"🔍 Search #{i}: {search['query'][:50]}... ({search['timestamp']})"):
             st.write(search['response'])
 
-# Footer with creative message
+# --- UI: Footer with creative message ---
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 3rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
